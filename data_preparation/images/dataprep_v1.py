@@ -1,4 +1,9 @@
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, random_split, Subset, DataLoader
+from torchvision.transforms import transforms
+import os
+from torchvision.transforms.functional import to_tensor
+from PIL import Image
+import torch
 
 
 class CustomDataset(Dataset):
@@ -21,15 +26,31 @@ class CustomDataset(Dataset):
     def __len__(self):
         return len(self.image_paths)
 
+    # def __getitem__(self, idx):
+    #     image_path = self.image_paths[idx]
+    #     label = self.labels[idx]
+    #     image = Image.open(image_path).convert("RGB")
+
+    #     if self.transform:
+    #         image = self.transform(image)
+
+    #     one_hot_label = one_hot(torch.tensor(label), len(self.classes)).float()
+
+    #     return image, one_hot_label
     def __getitem__(self, idx):
         image_path = self.image_paths[idx]
         label = self.labels[idx]
-        image = Image.open(image_path).convert("RGB")
+
+        try:
+            image = Image.open(image_path).convert("RGB")
+        except Exception as e:
+            print(f"Error loading image '{image_path}': {e}")
+            return None
 
         if self.transform:
             image = self.transform(image)
 
-        one_hot_label = one_hot(torch.tensor(label), len(self.classes)).float()
+        one_hot_label = torch.tensor(label).long()  # Assuming labels are integers
 
         return image, one_hot_label
 
@@ -61,7 +82,7 @@ transform = transforms.Compose(
     ]
 )
 
-images_dataset = CustomDataset(root_dir=PATH, transform=transform)
+images_dataset = CustomDataset("root/dir/to/data", transform=transform)
 
 # image, label = images_dataset[0]
 
