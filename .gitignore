@@ -1,3 +1,4 @@
 ldlenv/
 data/
 .env
+__pycache__/

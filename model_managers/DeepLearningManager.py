@@ -2,27 +2,23 @@ from pydantic import BaseModel
 from torch.nn import Module
 import torch
 import torch.cuda as cuda
+import torch.nn as nn
 from torch.optim import Optimizer
 import logging
 import numpy as np
 import random
+import matplotlib.pyplot as plt
 
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
 
-class DeepLearningManager(BaseModel):
-    model: Module
-    loss_fn: Module
-    optim: Optimizer
-    epochs: int
-    train_losses: list
-    test_losses: list
+class DeepLearningManager:
 
     def __init__(
         self,
@@ -101,11 +97,11 @@ class DeepLearningManager(BaseModel):
 
     def _mini_batch(self, validation=False):
         if validation:
-            data_loader = self.train_loader
-            step_fn = self.train_step_fn
-        else:
             data_loader = self.val_loader
             step_fn = self.val_step_fn
+        else:
+            data_loader = self.train_loader
+            step_fn = self.train_step_fn
 
         if data_loader is None:
             return None
@@ -135,21 +131,83 @@ class DeepLearningManager(BaseModel):
                 self.test_losses.append(val_loss)
 
             logger.info(
-                f"Epoch: {epoch}/{n_epochs} || Train Loss: {train_loss} || Val Loss: {val_loss}"
+                f"Epoch: {epoch+1}/{n_epochs} || Train Loss: {train_loss} || Val Loss: {val_loss}"
             )
 
-    def predict(self, x):
+    def save_checkpoint(self, filename):
+        checkpoint = {
+            "epoch": self.total_epochs,
+            "model_state_dict": self.model.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "loss": self.losses,
+            "val_loss": self.val_losses,
+        }
 
-        logger.debug("Performing prediction...")
-        self.model.eval()
-        x = torch.as_tensor(x).float()
-        y_pred = self.model(x.to(self.device))
+        torch.save(checkpoint, filename)
+
+    def load_checkpoint(self, filename):
+        checkpoint = torch.load(filename)
+
+        self.model.load_state_dict(checkpoint["model_state_dict"])
+        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+
+        self.total_epochs = checkpoint["epoch"]
+        self.losses = checkpoint["loss"]
+        self.val_losses = checkpoint["val_loss"]
+
         self.model.train()
-        logger.debug("Prediction completed.")
-        return y_pred.detach().cpu().numpy()
 
-    def save_checkpoints():
-        pass
+    def predict(self, x):
+        self.model.eval()
+        x_tensor = torch.as_tensor(x).float()
+        y_hat_tensor = self.model(x_tensor.to(self.device))
+        self.model.train()
+        return y_hat_tensor.detach().cpu().numpy()
 
-    def load_checlpoints():
-        pass
+    def plot_losses(self):
+        fig = plt.figure(figsize=(10, 4))
+        plt.plot(self.train_losses, label="Training Loss", c="b")
+        plt.plot(self.test_losses, label="Validation Loss", c="r")
+        plt.yscale("log")
+        plt.xlabel("Epochs")
+        plt.ylabel("Loss")
+        plt.legend()
+        plt.tight_layout()
+        return fig
+
+    def correct(self, x, y, threshold=0.5):
+        self.model.eval()
+        yhat = self.model(x.to(self.device))
+        y = y.to(self.device)
+        self.model.train()
+
+        n_samples, n_dims = yhat.shape
+        if n_dims > 1:
+            _, predicted = torch.max(yhat, 1)
+        else:
+            n_dims += 1
+            if isinstance(self.model, nn.Sequential) and isinstance(
+                self.model[-1], nn.Sigmoid
+            ):
+                predicted = (yhat > threshold).long()
+            else:
+                predicted = (torch.sigmoid(yhat) > threshold).long()
+
+        result = []
+        for c in range(n_dims):
+            n_class = (y == c).sum().item()
+            n_correct = (predicted[y == c] == c).sum().item()
+            result.append((n_correct, n_class))
+        return torch.tensor(result)
+
+    @staticmethod
+    def loader_apply(loader, func, reduce="sum"):
+        results = [func(x, y) for i, (x, y) in enumerate(loader)]
+        results = torch.stack(results, axis=0)
+
+        if reduce == "sum":
+            results = results.sum(axis=0)
+        elif reduce == "mean":
+            results = results.float().mean(axis=0)
+
+        return results
