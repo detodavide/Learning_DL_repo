@@ -2,3 +2,4 @@ ldlenv/
 data/
 .env
 __pycache__/
+*.txt
