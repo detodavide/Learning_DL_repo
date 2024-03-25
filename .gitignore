@@ -3,3 +3,6 @@ data/
 .env
 __pycache__/
 *.txt
+*.pkl
+*.faiss
+raw_data/
