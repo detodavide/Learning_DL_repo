@@ -17,18 +17,52 @@ load_dotenv(find_dotenv())
 def get_path():
     parent_path = os.getcwd()
     docs_path = "/raw_data/pdf/"
-    filename = "langchain_text1.txt"
+    filename = "mamba_linear-time-sequence.pdf"
     return parent_path + docs_path + filename
-
-
-def data_loader():
-    loader = PyPDFLoader("example_data/layout-parser-paper.pdf")
-    pages = loader.load_and_split()
 
 
 def main():
     pdf_file_path = get_path()
-    data_loader()
+    loader = PyPDFLoader(pdf_file_path)
+    docs = loader.load()
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=100,
+        chunk_overlap=20,
+    )
+    documents = text_splitter.split_documents(docs)
+
+    embeddings = OpenAIEmbeddings()
+    # vectorstore = FAISS.from_documents(documents, embeddings)
+
+    # vectorstore.save_local("mamba_index")
+
+    vectorstore = FAISS.load_local(
+        "mamba_index", embeddings, allow_dangerous_deserialization=True
+    )
+    retriever = vectorstore.as_retriever()
+
+    prompt_template = """You are a helpful assistant for Mamba architecture paper documentation.
+
+    {context}
+
+    Question: {question}
+    Answer here:"""
+    PROMPT = PromptTemplate(
+        template=prompt_template, input_variables=["context", "question"]
+    )
+
+    chain_type_kwargs = {"prompt": PROMPT}
+
+    llm = ChatOpenAI()
+    qa = RetrievalQA.from_chain_type(
+        llm=llm,
+        chain_type="stuff",
+        retriever=retriever,
+        chain_type_kwargs=chain_type_kwargs,
+    )
+
+    result = qa.invoke(input="How mamba works?")
+    print(result)
 
 
 if __name__ == "__main__":
